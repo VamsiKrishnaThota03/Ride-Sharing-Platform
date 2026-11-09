@@ -1,6 +1,6 @@
 # Ride-Sharing Platform
 
-A full-stack ride-safety sharing app: travelers share their cab details with a companion, companions follow the trip and leave feedback, and admins review users and feedback.
+A full-stack ride-safety sharing app: travelers share their cab details with a companion, companions follow the trip on a map and leave feedback, and admins review users and feedback. React, Express, Sequelize (PostgreSQL), JWT and WebSockets.
 
 ![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)
 ![Node.js](https://img.shields.io/badge/Node.js-339933?logo=nodedotjs&logoColor=white)
@@ -11,154 +11,209 @@ A full-stack ride-safety sharing app: travelers share their cab details with a c
 
 ## Overview
 
-This repository holds the **original monorepo** version of the project: a Create React App frontend in the root and an Express/Sequelize backend in `backend/`. Everything is set up to run locally (`localhost:3000` for the client, `localhost:5001` for the API).
-
-The app has three roles:
-
-- **Traveler**: shares the details of an ongoing cab ride (trip ID, driver, phone, cab number) with a companion
-- **Traveler Companion**: sees rides shared with their mobile number, opens the trip map and leaves feedback
-- **Admin**: views all registered users and all feedback
-
-### Related repositories
-
-The project was later split into two repositories for separate deployment. Those versions read the backend URL from the environment and connect to a hosted PostgreSQL database over SSL.
+This repository is the monorepo version of the project: a Create React App frontend in the root and an Express/Sequelize backend in `backend/`. It contains the same code as the two split repositories that are deployed separately.
 
 | Repository | What it contains |
 |------------|------------------|
-| [Ride-Sharing-Platform](https://github.com/VamsiKrishnaThota03/Ride-Sharing-Platform) | **This repo**: frontend + backend together, localhost setup |
+| [Ride-Sharing-Platform](https://github.com/VamsiKrishnaThota03/Ride-Sharing-Platform) | **This repo**: frontend + backend together |
 | [ride-sharing-platform-frontend](https://github.com/VamsiKrishnaThota03/ride-sharing-platform-frontend) | Standalone React client ([live demo](https://ride-sharing-platform-frontend.vercel.app)) |
 | [ride-sharing-platform-backend](https://github.com/VamsiKrishnaThota03/ride-sharing-platform-backend) | Standalone Express API |
 
+The app has three roles:
+
+- **Traveler**: shares the details of a cab ride (trip ID, driver, phone, cab number) with a companion
+- **Companion**: sees rides shared with their mobile number, follows the trip and leaves feedback
+- **Admin**: views all users and all feedback
+
+## Screenshots
+
+| Log in | Traveler dashboard |
+| --- | --- |
+| ![Login page](docs/screenshots/login.png) | ![Share form, route preview and ride history](docs/screenshots/traveler-dashboard.png) |
+
+| Companion dashboard | Admin: feedback |
+| --- | --- |
+| ![Rides shared with a companion](docs/screenshots/companion-dashboard.png) | ![Admin feedback table with ratings](docs/screenshots/admin-feedback.png) |
+
+Screenshots were taken locally with sample data (SQLite development database).
+
 ## Features
 
-**Authentication**
-- Sign-up with bcrypt-hashed passwords, and login that returns a JWT valid for 1 hour
-- Role-based route protection on the backend (`traveler`, `traveler_companion`, `admin`)
-- After login, each role is redirected to its own dashboard
+**All users**
+- Sign up as a **Traveler** or a **Companion** and log in. The JWT is kept in `localStorage`; expired tokens send you back to the login page, and each role only sees its own dashboard.
+- Profile page with an edit form (changing your email or mobile number logs you out so the token is refreshed).
 
-**Traveler**
-- Share-ride form. It saves the ride through the API, then opens WhatsApp (`wa.me`) with a pre-filled message containing the ride details and a shareable trip link.
-- "Your Shared Rides" table (audit trail of the traveler's active shared rides)
-- Leaflet / OpenStreetMap trip view
+**Traveler** (`/traveler-dashboard`)
+- Share-ride form (trip ID, driver name, driver phone, cab number, optional companion mobile). The ride is saved through the API, then WhatsApp (`wa.me`) opens with the details and a link to the trip. If the browser blocks the pop-up, a **Send details on WhatsApp** button is shown.
+- Ride history with status, a live-view link, a re-share link, **End** to mark a ride completed, and inline 1-5 star feedback.
+- Opening a trip (`/traveler-dashboard?tripId=...`) starts the trip simulation and streams the position to the companion over the WebSocket.
 
-**Traveler Companion**
-- Cards for every ride shared with the companion's mobile number, refreshed every 10 seconds
-- Each ride is shown as *Active* or *Expired* (more than 60 minutes after it was shared)
-- "View Map" link for active trips and "Give Feedback" (rating plus comment), which is stored for the admin
-- A notifications panel that listens on a WebSocket for `tripComplete` / `nearbyNotification` events. The backend does not send these events yet.
+**Companion** (`/companion-dashboard`)
+- Cards for every ride shared with your mobile number, refreshed every 10 seconds. A ride is *Active* until the traveler ends it or 60 minutes pass.
+- **Follow on map** for active rides: the map follows the traveler's position when the traveler has the trip open.
+- Notifications from the server when a trip is getting close to its destination and when it is complete.
+- Inline 1-5 star feedback.
 
-**Admin**
-- Lists of all users and all feedback
+**Admin** (`/admin-dashboard`)
+- Totals (travelers, companions, feedback, average rating), a users table and a feedback table.
+- Admin accounts cannot be created from the sign-up form; the backend grants the admin role to the emails in `ADMIN_EMAILS`.
 
-**Real-time**
-- The WebSocket server (`ws`) accepts a connection only for an active `tripId`
-- When the map reports `destinationReached`, the backend marks the trip inactive, so the shared ride expires
+### About the map
 
-> **Note:** the trip map is a simulation. The marker moves from a fixed start point (Delhi) to a fixed destination (Hyderabad) and does not use live GPS.
+The trip is a **simulation**: the marker moves in a straight line from Delhi to Hyderabad in about a minute (Leaflet with OpenStreetMap tiles). It does not use the device's GPS. Distance and ETA (at 60 km/h) are worked out from the simulated position.
 
 ## Tech stack
 
-| Layer | Technologies |
-|-------|--------------|
-| Frontend | React 18 (Create React App), React Router 6, Axios, Leaflet / react-leaflet, moment-timezone, Bootstrap / react-bootstrap, CSS |
-| Backend | Node.js, Express, Sequelize, `ws`, `jsonwebtoken`, `bcrypt`, `cors`, `dotenv` |
-| Database | PostgreSQL |
+| Layer | Tools |
+| --- | --- |
+| Frontend | React 18 (Create React App), React Router 6, Axios, `jwt-decode`, Leaflet + react-leaflet (OpenStreetMap), Bootstrap 5 with a custom theme |
+| Backend | Node.js 18+, Express 4, Sequelize 6 (`pg`), `jsonwebtoken`, `bcryptjs`, `express-validator`, `ws`, `dotenv`, `cors` |
+| Database | PostgreSQL (Supabase in production); SQLite for local development and tests |
+| Tests | Jest + Testing Library (frontend), `node:test` (backend API and WebSocket) |
 
 ## Project structure
 
 ```
 Ride-Sharing-Platform/
-├── public/                    # CRA static assets
-├── src/                       # React frontend
-│   ├── App.js                 # Routes
-│   └── components/            # Login, Signup, Navbar, Profile, dashboards, map, ride form/history
 ├── backend/
-│   ├── server.js              # Express app + WebSocket server (port 5001)
-│   ├── config/db.js           # Sequelize / PostgreSQL connection
-│   ├── models/                # User, RideShare, Feedback
-│   ├── controllers/           # auth, ride, feedback, admin, user
-│   ├── routes/                # /api, /api/rides, /api/feedback, /api/admin
-│   ├── middleware/            # JWT + role checks
-│   └── utils/jwtUtils.js
-└── package.json               # Frontend dependencies and scripts
+│   ├── server.js            # checks config, connects the DB, starts HTTP + WebSocket
+│   ├── app.js               # Express app (CORS, routes, errors)
+│   ├── realtime.js          # authenticated trip WebSocket and companion notifications
+│   ├── config/              # env helpers, Sequelize connection
+│   ├── controllers/         # auth, user, ride, feedback, admin
+│   ├── middleware/          # authMiddleware (JWT + requireRole), validate
+│   ├── models/              # User, RideShare, Feedback
+│   ├── routes/
+│   └── test/                # API and WebSocket tests (in-memory SQLite)
+├── public/
+└── src/
+    ├── App.js               # routes and role guards
+    ├── config.js            # backend / frontend URLs
+    ├── utils/               # auth session, geo, ride helpers
+    └── components/          # Login, Signup, Navbar, TravelerDashboard, TravelerMap,
+                             # RideSharingForm, RideHistory, FeedbackForm,
+                             # CompanionDashboard, AdminDashboard, Profile
 ```
 
 ## Getting started
 
 ### Prerequisites
 
-- Node.js 18+ and npm
-- PostgreSQL running locally (create an empty database, for example `ride_sharing_app`)
+- Node.js 18 or newer and npm
+- PostgreSQL (local or hosted), or nothing at all if you use the SQLite option for development
 
-### 1. Backend
-
-`backend/` has no `package.json` of its own, so install its dependencies first:
+### Install
 
 ```bash
-cd backend
-npm init -y
-npm install express body-parser cors dotenv sequelize pg pg-hstore bcrypt jsonwebtoken ws
-node server.js            # http://localhost:5001
+git clone https://github.com/VamsiKrishnaThota03/Ride-Sharing-Platform.git
+cd Ride-Sharing-Platform
+npm install                         # also installs backend/ dependencies
+cp .env.example .env                # frontend settings
+cp backend/.env.example backend/.env
 ```
 
-Tables are created automatically on startup (`sequelize.sync()`).
+### Backend environment (`backend/.env`)
 
-Create `backend/.env`:
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `JWT_SECRET` | Yes | Long random string used to sign JWTs |
+| `DATABASE_URL` | One DB option | Full PostgreSQL URL, for example `postgres://user:password@host:5432/postgres` |
+| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | One DB option | PostgreSQL connection parts (the Supabase pooler uses port `6543`) |
+| `DB_SSL` | No | `false` to connect to a local PostgreSQL without SSL (default `true`) |
+| `DB_DIALECT`, `DB_STORAGE` | One DB option | `DB_DIALECT=sqlite` uses a local SQLite file (`DB_STORAGE`, default `dev.sqlite`). For local development only; `sqlite3` is a dev dependency |
+| `ADMIN_EMAILS` | No | Comma-separated emails that get the admin role when they sign up |
+| `CORS_ORIGIN` | No | Comma-separated allowed browser origins, for example `https://ride-sharing-platform-frontend.vercel.app`. Empty allows every origin |
+| `PORT` | No | HTTP and WebSocket port, default `5001` |
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `DB_HOST` | PostgreSQL host | `localhost` |
-| `DB_PORT` | PostgreSQL port | `5432` |
-| `DB_NAME` | Database name | `ride_sharing_app` |
-| `DB_USER` | Database user | `<your-db-user>` |
-| `DB_PASSWORD` | Database password | `<your-db-password>` |
-| `JWT_SECRET` | Secret used to sign JWTs | `<a-long-random-string>` |
-| `PORT` | Not used yet; the server listens on 5001 | `5001` |
+The server exits with a clear message if `JWT_SECRET` or a database setting is missing, and creates the tables on start (`sequelize.sync()`).
 
-### 2. Frontend
+Quick local setup without PostgreSQL:
 
-From the repository root:
+```env
+JWT_SECRET=any-long-random-string
+DB_DIALECT=sqlite
+DB_STORAGE=dev.sqlite
+ADMIN_EMAILS=you@example.com
+```
+
+### Frontend environment (`.env`)
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `REACT_APP_BACKEND_URL` | No | API base URL. Defaults to `http://localhost:5001` in development and `https://ride-sharing-platform-backend.onrender.com` in production builds. The WebSocket URL is derived from it |
+| `REACT_APP_FRONTEND_URL` | No | Public URL used in shared WhatsApp links. Defaults to the site's own origin |
+
+`REACT_APP_*` values are read at build time, so restart `npm start` (or redeploy) after changing them.
+
+### Run
 
 ```bash
-npm install
-npm start                 # http://localhost:3000
+npm run both        # React dev server on :3000 and the API (nodemon) on :5001
 ```
 
-Root `.env` (optional; the components in this version call `http://localhost:5001` directly):
-
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `REACT_APP_BACKEND_URL` | Backend base URL | `http://localhost:5001` |
+Or separately: `npm run server` for the API and `npm start` for the client. Sign up with an email from `ADMIN_EMAILS` to get an admin account.
 
 ### Scripts
 
 | Command | Description |
-|---------|-------------|
-| `npm start` | Start the React dev server |
+| --- | --- |
+| `npm start` | React dev server |
 | `npm run build` | Production build into `build/` |
-| `npm test` | CRA test runner |
+| `npm test` | Frontend tests |
+| `npm run server` / `npm run server:dev` | API with `node` / `nodemon` |
+| `npm run both` | Frontend and API together |
+| `npm --prefix backend test` | Backend API and WebSocket tests (in-memory SQLite) |
 
 ## API
 
+REST routes are prefixed with `/api`. Protected routes expect `Authorization: Bearer <token>`. Errors are returned as `{ "message": "..." }`.
+
 | Method | Path | Auth | Purpose |
 |--------|------|------|---------|
-| `POST` | `/api/signup` | none | Register a user (`name`, `email`, `mobile_number`, `password`, `role`) |
-| `POST` | `/api/login` | none | Log in and get a JWT (companions also receive their shared rides) |
-| `GET` | `/api/user/profile` | logged in | Current user's profile |
-| `POST` | `/api/rides/share` | logged in | Save a shared ride |
-| `GET` | `/api/rides/shared` | logged in | Current user's active shared rides |
-| `GET` | `/api/rides/companion/details` | `traveler_companion` | Rides shared with the companion's mobile number |
-| `POST` | `/api/feedback/send` | `traveler_companion` | Submit feedback (`rideShareId`, `rating`, `comment`) |
-| `GET` | `/api/admin/users` | `admin` | List all users |
-| `GET` | `/api/admin/feedbacks` | `admin` | List all feedback |
-| `WS` | `ws://localhost:5001/?tripId=<id>` | n/a | Trip channel; `{"type":"destinationReached"}` marks the trip inactive |
+| `GET` | `/` | none | Health check |
+| `POST` | `/api/signup` | none | Register (`name`, `email`, `mobile_number` (10 digits), `password` (6+), `role`: `traveler` or `traveler_companion`) |
+| `POST` | `/api/login` | none | Log in; returns `token`, `role`, `mobile_number` (companions also get `rideShareDetails`) |
+| `GET` | `/api/user/profile` | any user | Current profile (password excluded) |
+| `PUT` | `/api/user/profile` | any user | Update `name`, `email`, `mobile_number` |
+| `POST` | `/api/rides/share` | `traveler` | Save a shared ride (`tripId`, `driverName`, `driverPhone`, `cabNumber`, `companionMobile`) |
+| `GET` | `/api/rides/shared` | any user | Rides shared by the current user, newest first |
+| `POST` | `/api/rides/expire` | `traveler` (owner) | Mark one of your rides as completed (`tripId`) |
+| `GET` | `/api/rides/companion/details` | `traveler_companion` | Rides shared with your mobile number |
+| `POST` | `/api/feedback/send` | `traveler`, `traveler_companion` | Feedback (`rideShareId` = trip ID, `rating` 1-5, `comment`) for a ride you shared or were the companion on |
+| `GET` | `/api/admin/users` | `admin` | All users (passwords excluded) |
+| `GET` | `/api/admin/feedbacks` | `admin` | All feedback |
 
-## Possible improvements
+### WebSocket
 
-- Use real device geolocation instead of the simulated route
-- Have the server send companion notifications (trip complete, geofence near drop-off)
-- SMS sharing in addition to WhatsApp
-- Ride analytics for admins and ratings for drivers
+The WebSocket server runs on the same port. Every connection needs a valid token.
+
+| URL | Who | Behaviour |
+|-----|-----|-----------|
+| `ws://<host>/?tripId=<id>&token=<jwt>` | Trip owner, its companion or an admin | Joins an active trip. The owner sends `{"type":"updatePosition","lat":..,"lon":..}` (relayed to the other viewers as `position`), `{"type":"nearby"}` and `{"type":"destinationReached"}` (marks the ride inactive). |
+| `ws://<host>/?token=<jwt>` | Companion | Receives `nearbyNotification` and `tripComplete` messages for rides shared with them |
+
+## Data model
+
+| Model | Fields |
+|-------|--------|
+| `User` | `name`, `email` (unique), `mobile_number`, `password` (bcrypt hash), `role` (`traveler` / `traveler_companion` / `admin`) |
+| `RideShare` | `tripId`, `driverName`, `driverPhone`, `cabNumber`, `companionMobile`, `userId`, `isActive` |
+| `Feedback` | `rideShareId` (trip ID), `userId`, `rating` (1-5), `comment` |
+
+## Security notes
+
+- Earlier commits contained `backend/.env` with a database password and a JWT secret. The file is no longer tracked, but it is still in the git history, so rotate both.
+- Admin accounts come only from `ADMIN_EMAILS`; the sign-up form cannot create them.
+
+## Known limitations
+
+- The trip map is a simulated Delhi to Hyderabad route, not real GPS tracking, and the simulation restarts when the page is reloaded.
+- Companions only get live positions while the traveler has the trip page open; otherwise they see the simulation.
+- Companions are matched by mobile number, so the traveler must enter the number the companion registered with.
+- Rides show as completed 60 minutes after they were shared, even if nobody ended them.
+- JWTs live in `localStorage` and expire after one hour; there is no refresh token or rate limiting on login.
+- `npm audit` still reports issues inside `react-scripts` (Create React App) and Sequelize's `uuid` dependency that need breaking upgrades.
+
 
 ## Contact
 
