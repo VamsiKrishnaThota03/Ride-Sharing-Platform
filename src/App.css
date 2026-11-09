@@ -1,9 +1,0 @@
-/* Example of a global rule to check */
-body {
-  background-color: white; /* Set to white or your desired color */
-}
-
-/* Or remove any dark background */
-.container {
-  background-color: transparent; /* Adjust if necessary */
-}

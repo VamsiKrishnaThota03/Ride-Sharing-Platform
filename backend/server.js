@@ -1,98 +1,32 @@
-const express = require('express');
-const bodyParser = require('body-parser');
-const sequelize = require('./config/db'); // Database connection
-const cors = require('cors');
-const RideShare = require('./models/RideShare'); // Import the RideShare model
-const WebSocket = require('ws');
-const authRoutes = require('./routes/authRoutes'); // Ensure the path is correct
-const rideRoutes = require('./routes/rideRoutes'); // Import ride routes
-const feedbackRoutes = require('./routes/feedbackRoutes'); // Import feedback routes
-const adminRoutes = require('./routes/adminRoutes'); // Adjust the path as necessary
-const authMiddleware = require('./middleware/authMiddleware'); // Import auth middleware
-require('dotenv').config();
+const { requireEnv } = require('./config/env');
 
-const app = express();
+// Fail fast if required configuration is missing.
+let sequelize;
+try {
+  requireEnv('JWT_SECRET');
+  sequelize = require('./config/db');
+} catch (error) {
+  console.error(error.message);
+  process.exit(1);
+}
 
-// Middleware
-app.use(cors());
-app.use(bodyParser.json());
+const app = require('./app');
+const attachRealtime = require('./realtime');
 
-// Routes
-app.use('/api', authRoutes);
-app.use('/api/rides', rideRoutes);
-app.use('/api/feedback', feedbackRoutes);
-app.use('/api/admin', adminRoutes);
+const PORT = Number(process.env.PORT) || 5001;
 
-// WebSocket setup
-const server = app.listen(5001, () => {
-    console.log('Server running on port 5001');
-});
-const wss = new WebSocket.Server({ server });
+const start = async () => {
+  try {
+    await sequelize.authenticate();
+    await sequelize.sync();
+    console.log('Database connected and synchronized');
+  } catch (error) {
+    console.error('Unable to connect to the database:', error.message);
+    process.exit(1);
+  }
 
-// Store WebSocket clients by tripId
-const clientsByTripId = {};
-
-// Geofence radius (in degrees, approximate)
-const GEOFENCE_RADIUS = 0.01; // Approx. 1 km
-
-// Helper function to calculate distance
-const calculateDistance = (lat1, lon1, lat2, lon2) => {
-    return Math.sqrt((lat2 - lat1) ** 2 + (lon2 - lon1) ** 2);
+  const server = app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+  attachRealtime(server);
 };
 
-// WebSocket connection logic
-wss.on('connection', async (ws, req) => {
-  console.log('New client connected');
-  const tripId = req.url.split('?tripId=')[1];
-  if (!tripId) {
-      console.log('Connection rejected: tripId not provided');
-      ws.close();
-      return;
-  }
-
-  const trip = await RideShare.findOne({ where: { tripId } });
-  if (!trip || !trip.isActive) {
-      console.log(`Connection rejected: trip ${tripId} is inactive`);
-      ws.close();
-      return;
-  }
-
-  // Notify companion about the current status
-  ws.send(JSON.stringify({
-      type: 'statusUpdate',
-      status: trip.status, // Assuming you have a status field in your trip model
-      estimatedTime: trip.estimatedTime // Assuming you have estimatedTime in your trip model
-  }));
-
-  if (!clientsByTripId[tripId]) {
-      clientsByTripId[tripId] = [];
-  }
-
-  clientsByTripId[tripId].push(ws);
-
-  ws.on('message', (message) => {
-      const msg = JSON.parse(message);
-      if (msg.type === 'destinationReached') {
-          trip.isActive = false; // Mark trip as inactive
-          trip.save();
-          console.log(`Trip ${tripId} has reached the destination.`);
-      }
-  });
-
-  ws.on('close', () => {
-      console.log('Client disconnected');
-      clientsByTripId[tripId] = clientsByTripId[tripId].filter(client => client !== ws);
-      if (clientsByTripId[tripId].length === 0) {
-          delete clientsByTripId[tripId]; // Clean up if no clients left
-      }
-  });
-});
-
-// Sync database and start the server
-sequelize.sync({ force: false })
-    .then(() => {
-        console.log('Database synchronized');
-    })
-    .catch((error) => {
-        console.error('Error synchronizing the database:', error);
-    });
+start();

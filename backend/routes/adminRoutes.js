@@ -1,12 +1,11 @@
 const express = require('express');
-const router = express.Router();
-const { authMiddleware } = require('../middleware/adminMiddleware');
-
 const adminController = require('../controllers/adminController');
-const feedbackController = require('../controllers/feedbackController');
+const { authMiddleware, requireRole } = require('../middleware/authMiddleware');
 
-// Ensure this route is properly defined
-router.get('/users', authMiddleware(['admin']), adminController.getAllUsers);
-router.get('/feedbacks', authMiddleware(['admin']), adminController.getAllFeedbacks);
+const router = express.Router();
+
+router.use(authMiddleware, requireRole('admin'));
+router.get('/users', adminController.getAllUsers);
+router.get('/feedbacks', adminController.getAllFeedbacks);
 
 module.exports = router;

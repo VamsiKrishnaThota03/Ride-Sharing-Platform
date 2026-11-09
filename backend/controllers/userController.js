@@ -1,50 +1,46 @@
-// controllers/userController.js
+const { body } = require('express-validator');
+const { UniqueConstraintError } = require('sequelize');
 const User = require('../models/User');
+const validate = require('../middleware/validate');
 
 exports.getUserProfile = async (req, res) => {
-    try {
-        const userId = req.user.id; // Get the user ID from the decoded token
-        const user = await User.findByPk(userId, {
-            attributes: { exclude: ['password'] }, // Exclude the password field
-        });
-
-        if (!user) {
-            return res.status(404).json({ message: 'User not found' });
-        }
-
-        res.json(user); // Send back the user profile
-    } catch (error) {
-        console.error('Error fetching user profile:', error);
-        res.status(500).json({ message: 'Internal server error' });
-    }
+  try {
+    const user = await User.findByPk(req.user.id, { attributes: { exclude: ['password'] } });
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    res.json(user);
+  } catch (error) {
+    console.error('Error fetching user profile:', error.message);
+    res.status(500).json({ message: 'Internal server error' });
+  }
 };
 
-
-exports.editProfile = async (req, res) => {
+exports.editProfile = [
+  body('name').trim().notEmpty().withMessage('Name is required.'),
+  body('email').trim().isEmail().withMessage('Please enter a valid email address.'),
+  body('mobile_number').trim().matches(/^\d{10}$/).withMessage('Please enter a valid 10-digit mobile number.'),
+  validate,
+  async (req, res) => {
     try {
-        const userId = req.user.id; // Get user ID from the authenticated request
-        const { name, email, mobile_number } = req.body; // Get new profile data from request body
+      const user = await User.findByPk(req.user.id);
+      if (!user) return res.status(404).json({ message: 'User not found' });
 
-        // Validate incoming data (add additional validation as needed)
-        if (!name || !email || !mobile_number) {
-            return res.status(400).json({ message: 'All fields are required.' });
-        }
+      const { name, email, mobile_number } = req.body;
+      user.name = name;
+      user.email = email;
+      user.mobile_number = mobile_number;
+      await user.save();
 
-        // Update user details
-        const user = await User.findByPk(userId);
-        if (!user) {
-            return res.status(404).json({ message: 'User not found' });
-        }
-
-        user.name = name;
-        user.email = email;
-        user.mobile_number = mobile_number;
-
-        await user.save(); // Save the changes
-
-        res.json({ message: 'Profile updated successfully', user });
+      const { password, ...profile } = user.toJSON();
+      res.json({
+        message: 'Profile updated. Log in again if you changed your email or mobile number.',
+        user: profile,
+      });
     } catch (error) {
-        console.error('Error updating profile:', error);
-        res.status(500).json({ message: 'Internal server error' });
+      if (error instanceof UniqueConstraintError) {
+        return res.status(409).json({ message: 'An account with this email already exists.' });
+      }
+      console.error('Error updating profile:', error.message);
+      res.status(500).json({ message: 'Internal server error' });
     }
-};
+  },
+];

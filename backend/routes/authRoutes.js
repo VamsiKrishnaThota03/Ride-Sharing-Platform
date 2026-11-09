@@ -1,17 +1,13 @@
-// routes/authRoutes.js
 const express = require('express');
-const router = express.Router();
 const authController = require('../controllers/authController');
-const userController = require('../controllers/userController'); // Import your user controller
-const authMiddleware = require('../middleware/authMiddleware'); // Import auth middleware
+const userController = require('../controllers/userController');
+const { authMiddleware } = require('../middleware/authMiddleware');
 
-// Signup route
+const router = express.Router();
+
 router.post('/signup', authController.signup);
-
-// Login route
 router.post('/login', authController.login);
+router.get('/user/profile', authMiddleware, userController.getUserProfile);
+router.put('/user/profile', authMiddleware, userController.editProfile);
 
-// User profile route (protected)
-router.get('/user/profile', authMiddleware.authMiddleware, userController.getUserProfile);
-
-module.exports = router; // Ensure this is exporting the router
+module.exports = router;

@@ -1,20 +1,24 @@
-const jwt = require('jsonwebtoken');
+const { verifyToken } = require('../utils/jwtUtils');
 
+// Verifies the `Authorization: Bearer <token>` header and sets req.user.
 exports.authMiddleware = (req, res, next) => {
-    const token = req.headers['authorization']; // Get the token from the headers
-    console.log('Received Token:', token); // Log the received token
+  const [scheme, token] = (req.headers.authorization || '').split(' ');
+  if (scheme !== 'Bearer' || !token) {
+    return res.status(401).json({ message: 'Access denied. Please log in.' });
+  }
 
-    if (!token) {
-        return res.status(401).json({ message: 'Access Denied. No token provided.' });
-    }
+  try {
+    req.user = verifyToken(token);
+    next();
+  } catch (error) {
+    res.status(401).json({ message: 'Invalid or expired token. Please log in again.' });
+  }
+};
 
-    try {
-        // Use split to get the token part after "Bearer "
-        const decoded = jwt.verify(token.split(' ')[1], process.env.JWT_SECRET);
-        req.user = decoded; // Attach the decoded token to the request object
-        next();
-    } catch (error) {
-        console.error('Token verification error:', error); // Log verification error
-        res.status(400).json({ message: 'Invalid token' });
-    }
+// Use after authMiddleware: allows only the given roles.
+exports.requireRole = (...roles) => (req, res, next) => {
+  if (!req.user || !roles.includes(req.user.role)) {
+    return res.status(403).json({ message: 'Access denied: insufficient permissions.' });
+  }
+  next();
 };

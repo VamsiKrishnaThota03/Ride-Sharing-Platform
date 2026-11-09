@@ -1,14 +1,12 @@
-// routes/rideRoutes.js
 const express = require('express');
-const router = express.Router();
 const rideController = require('../controllers/rideController');
-const { authMiddleware } = require('../middleware/authMiddleware');
+const { authMiddleware, requireRole } = require('../middleware/authMiddleware');
 
-// Protected routes
-router.post('/share', authMiddleware, rideController.saveRideShare);
+const router = express.Router();
+
+router.post('/share', authMiddleware, requireRole('traveler'), rideController.saveRideShare);
 router.get('/shared', authMiddleware, rideController.getUserRideShares);
-// router.post('/expire', authMiddleware, rideController.expireRideShare);
-
-router.get('/companion/details', authMiddleware, rideController.getCompanionRideDetails);
+router.post('/expire', authMiddleware, requireRole('traveler'), rideController.expireRideShare);
+router.get('/companion/details', authMiddleware, requireRole('traveler_companion'), rideController.getCompanionRideDetails);
 
 module.exports = router;

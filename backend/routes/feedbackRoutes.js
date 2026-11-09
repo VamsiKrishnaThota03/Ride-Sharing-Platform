@@ -1,12 +1,9 @@
-// routes/feedbackRoutes.js
 const express = require('express');
 const feedbackController = require('../controllers/feedbackController');
-const { authMiddleware } = require('../middleware/adminMiddleware');
-
+const { authMiddleware, requireRole } = require('../middleware/authMiddleware');
 
 const router = express.Router();
 
-// Companion submits feedback
-router.post('/send', authMiddleware(['traveler_companion']), feedbackController.submitFeedback);
+router.post('/send', authMiddleware, requireRole('traveler', 'traveler_companion'), feedbackController.submitFeedback);
 
 module.exports = router;

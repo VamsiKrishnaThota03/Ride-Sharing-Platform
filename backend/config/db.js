@@ -1,25 +1,40 @@
 const { Sequelize } = require('sequelize');
-require('dotenv').config();
+const { requireEnv } = require('./env');
 
-// Initialize Sequelize with your PostgreSQL connection details
-const sequelize = new Sequelize(
-    process.env.DB_NAME, // Database name
-    process.env.DB_USER, // Username
-    process.env.DB_PASSWORD, // Password
-    {
-        host: process.env.DB_HOST,
-        dialect: 'postgres', // Specify PostgreSQL
-        port: process.env.DB_PORT,
-    }
-);
+// Connection options, in order of precedence:
+//   1. DATABASE_URL=postgres://user:password@host:port/db
+//   2. DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
+//   3. DB_DIALECT=sqlite (local development only, file in DB_STORAGE)
+// DB_SSL=false turns off SSL for a local PostgreSQL server.
+const useSsl = process.env.DB_SSL !== 'false';
+const postgresOptions = {
+  dialect: 'postgres',
+  logging: false,
+  dialectOptions: useSsl ? { ssl: { require: true, rejectUnauthorized: false } } : {},
+};
 
-// Test the connection
-sequelize.authenticate()
-    .then(() => {
-        console.log('Connection to the database has been established successfully.');
-    })
-    .catch((err) => {
-        console.error('Unable to connect to the database:', err);
+const createSequelize = () => {
+  if (process.env.DATABASE_URL) {
+    return new Sequelize(process.env.DATABASE_URL, postgresOptions);
+  }
+  if (process.env.DB_DIALECT === 'sqlite') {
+    return new Sequelize({
+      dialect: 'sqlite',
+      storage: process.env.DB_STORAGE || 'dev.sqlite',
+      logging: false,
     });
+  }
+  if (process.env.DB_HOST) {
+    return new Sequelize(requireEnv('DB_NAME'), requireEnv('DB_USER'), requireEnv('DB_PASSWORD'), {
+      ...postgresOptions,
+      host: process.env.DB_HOST,
+      port: Number(process.env.DB_PORT) || 5432,
+    });
+  }
+  throw new Error(
+    'No database configured. Set DATABASE_URL, or DB_HOST/DB_NAME/DB_USER/DB_PASSWORD, ' +
+      'or DB_DIALECT=sqlite for local development. See .env.example.'
+  );
+};
 
-module.exports = sequelize;
+module.exports = createSequelize();
