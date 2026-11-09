@@ -1,35 +1,30 @@
 {
-  "name": "frontend",
+  "name": "ride-sharing-platform",
   "version": "0.1.0",
   "private": true,
   "dependencies": {
-    "@react-google-maps/api": "^2.20.3",
     "@testing-library/jest-dom": "^5.17.0",
     "@testing-library/react": "^13.4.0",
     "@testing-library/user-event": "^13.5.0",
     "axios": "^1.7.7",
     "bootstrap": "^5.3.3",
-    "geolib": "^3.3.4",
     "jwt-decode": "^4.0.0",
     "leaflet": "^1.9.4",
-    "mapbox-gl": "^3.7.0",
-    "moment-timezone": "^0.5.46",
-    "pusher-js": "^8.4.0-rc2",
     "react": "^18.3.1",
-    "react-bootstrap": "^2.10.5",
     "react-dom": "^18.3.1",
     "react-leaflet": "^4.2.1",
     "react-router-dom": "^6.27.0",
-    "react-scripts": "5.0.1",
-    "socket.io-client": "^4.8.0",
-    "twilio": "^5.3.4",
-    "web-vitals": "^2.1.4"
+    "react-scripts": "5.0.1"
   },
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "server": "npm --prefix backend start",
+    "server:dev": "npm --prefix backend run dev",
+    "both": "concurrently -n client,server \"npm start\" \"npm run server:dev\"",
+    "postinstall": "npm --prefix backend install"
   },
   "eslintConfig": {
     "extends": [
@@ -47,6 +42,18 @@
       "last 1 chrome version",
       "last 1 firefox version",
       "last 1 safari version"
+    ]
+  },
+  "devDependencies": {
+    "@babel/plugin-proposal-private-property-in-object": "^7.21.11",
+    "concurrently": "^9.0.1"
+  },
+  "jest": {
+    "moduleNameMapper": {
+      "^axios$": "axios/dist/node/axios.cjs"
+    },
+    "transformIgnorePatterns": [
+      "node_modules/(?!(react-leaflet|@react-leaflet|leaflet)/)"
     ]
   }
 }
