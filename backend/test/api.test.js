@@ -1,9 +1,21 @@
 // End-to-end API tests against an in-memory SQLite database.
 process.env.JWT_SECRET = 'test-only-secret';
-process.env.DB_DIALECT = 'sqlite';
-process.env.DB_STORAGE = ':memory:';
 process.env.ADMIN_EMAILS = 'boss@example.com';
-delete process.env.DATABASE_URL;
+
+// Run against the real production dialect when a PostgreSQL URL is supplied
+// (CI does this with a service container), otherwise fall back to an in-memory
+// SQLite database so the suite still works on a machine with no database.
+// sqlite3 is an optional dependency: its native build needs node-gyp, which
+// fails on Python 3.12+ because distutils was removed from the standard library.
+if (process.env.TEST_DATABASE_URL) {
+  process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
+  process.env.DB_SSL = process.env.DB_SSL || 'false';
+  delete process.env.DB_DIALECT;
+} else {
+  process.env.DB_DIALECT = 'sqlite';
+  process.env.DB_STORAGE = ':memory:';
+  delete process.env.DATABASE_URL;
+}
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
@@ -17,7 +29,9 @@ let base;
 
 before(async () => {
   await sequelize.sync({ force: true });
-  server = app.listen(0);
+  // Loopback explicitly: an ephemeral port on all interfaces would briefly
+  // expose the test server to the local network.
+  server = app.listen(0, '127.0.0.1');
   attachRealtime(server);
   await new Promise((resolve) => server.once('listening', resolve));
   base = `http://127.0.0.1:${server.address().port}`;

@@ -9,6 +9,10 @@ A full-stack ride-safety sharing app: travelers share their cab details with a c
 ![Sequelize](https://img.shields.io/badge/Sequelize-6.x-52B0E7?logo=sequelize&logoColor=white)
 ![Leaflet](https://img.shields.io/badge/Leaflet-199900?logo=leaflet&logoColor=white)
 
+[![CI](https://github.com/VamsiKrishnaThota03/Ride-Sharing-Platform/actions/workflows/ci.yml/badge.svg)](https://github.com/VamsiKrishnaThota03/Ride-Sharing-Platform/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/VamsiKrishnaThota03/Ride-Sharing-Platform/actions/workflows/codeql.yml/badge.svg)](https://github.com/VamsiKrishnaThota03/Ride-Sharing-Platform/actions/workflows/codeql.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 ## Overview
 
 This repository is the monorepo version of the project: a Create React App frontend in the root and an Express/Sequelize backend in `backend/`. It contains the same code as the two split repositories that are deployed separately.
@@ -119,11 +123,14 @@ cp backend/.env.example backend/.env
 | `JWT_SECRET` | Yes | Long random string used to sign JWTs |
 | `DATABASE_URL` | One DB option | Full PostgreSQL URL, for example `postgres://user:password@host:5432/postgres` |
 | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | One DB option | PostgreSQL connection parts (the Supabase pooler uses port `6543`) |
-| `DB_SSL` | No | `false` to connect to a local PostgreSQL without SSL (default `true`) |
-| `DB_DIALECT`, `DB_STORAGE` | One DB option | `DB_DIALECT=sqlite` uses a local SQLite file (`DB_STORAGE`, default `dev.sqlite`). For local development only; `sqlite3` is a dev dependency |
+| `DB_SSL` | No | Unset: TLS with **certificate verification**. `no-verify`: TLS without verification (for a provider whose CA is not in Node's bundle). `false` / `disable`: no TLS, for a local or CI PostgreSQL |
+| `DB_DIALECT`, `DB_STORAGE` | One DB option | `DB_DIALECT=sqlite` uses a local SQLite file (`DB_STORAGE`, default `dev.sqlite`). Local development only; `sqlite3` is an **optional** dependency because its native build fails on Python 3.12+ (node-gyp needs `distutils`, removed from the standard library). Install it with `npm install sqlite3` if you want the fallback |
 | `ADMIN_EMAILS` | No | Comma-separated emails that get the admin role when they sign up |
 | `CORS_ORIGIN` | No | Comma-separated allowed browser origins, for example `https://ride-sharing-platform-frontend.vercel.app`. Empty allows every origin |
 | `PORT` | No | HTTP and WebSocket port, default `5001` |
+| `HOST` | No | Bind address. Defaults to `127.0.0.1`, or `0.0.0.0` when a managed-platform marker (`RENDER`, `FLY_APP_NAME`, `RAILWAY_ENVIRONMENT`, `DYNO`) is present |
+| `RATE_LIMIT_MAX` | No | Requests per IP per 15 minutes across all routes, default `600` |
+| `AUTH_RATE_LIMIT_MAX` | No | Login/register attempts per IP+email per 15 minutes, default `20` |
 
 The server exits with a clear message if `JWT_SECRET` or a database setting is missing, and creates the tables on start (`sequelize.sync()`).
 
@@ -162,7 +169,8 @@ Or separately: `npm run server` for the API and `npm start` for the client. Sign
 | `npm test` | Frontend tests |
 | `npm run server` / `npm run server:dev` | API with `node` / `nodemon` |
 | `npm run both` | Frontend and API together |
-| `npm --prefix backend test` | Backend API and WebSocket tests (in-memory SQLite) |
+| `npm --prefix backend test` | Backend API, WebSocket and hardening tests. Uses PostgreSQL when `TEST_DATABASE_URL` is set (as CI does), otherwise in-memory SQLite |
+| `npm --prefix backend run test:coverage` | Same, with coverage |
 
 ## API
 
@@ -205,14 +213,70 @@ The WebSocket server runs on the same port. Every connection needs a valid token
 - Earlier commits contained `backend/.env` with a database password and a JWT secret. The file is no longer tracked, but it is still in the git history, so rotate both.
 - Admin accounts come only from `ADMIN_EMAILS`; the sign-up form cannot create them.
 
+### Hardening
+
+The API listener was `app.listen(PORT)` with no host, which binds **every**
+interface — a development server was reachable from anyone on the same network.
+It now defaults to `127.0.0.1`, detects managed platforms by their own
+environment markers, and honours an explicit `HOST`. A CI job inspects the real
+listening socket with `ss -ltn` rather than trusting the source, because a bind
+is the kind of thing that regresses quietly.
+
+Database TLS verification was off unconditionally
+(`ssl: { require: true, rejectUnauthorized: false }`), which accepts any
+certificate and therefore does not authenticate the server at all. Verification
+is now the default; `DB_SSL=no-verify` keeps the old behaviour available for a
+provider whose CA is not in Node's bundle, but it has to be asked for.
+
+Also added:
+
+- **helmet** with a deny-all CSP (this is a JSON API; nothing is loaded from it
+  as a subresource), `nosniff` and `no-referrer`.
+- **Rate limiting**, which the limitations list previously called out as
+  missing: a global ceiling, plus a tighter one on the auth routes keyed on IP
+  **plus the submitted email** so one attacker behind a shared address cannot
+  lock out everyone else. It counts successes as well as failures, so a valid
+  login cannot refill the budget. `trust proxy` is set to exactly one hop, so
+  `X-Forwarded-For` cannot be spoofed to bypass it.
+- **Split health probes.** `GET /health` is liveness and never touches the
+  database, so a blip cannot cause a restart loop. `GET /health/ready` runs
+  `authenticate()` and answers 503 with `Retry-After: 30`, without leaking the
+  connection string.
+- **Graceful shutdown** on SIGTERM/SIGINT that closes the WebSocket server, then
+  the HTTP server, then Sequelize — so a deploy does not drop live trip streams.
+
+### Continuous integration
+
+| Job | What it proves |
+| --- | --- |
+| `backend` (Node 20, 22) | The full suite against a **PostgreSQL 16** service container — the dialect production actually uses, rather than SQLite |
+| `bind-address` | Reads `ss -ltn` on the running server: no `0.0.0.0:5001` listener by default, a loopback one present, `HOST=0.0.0.0` still honoured, readiness turns green, and `SIGTERM` exits cleanly |
+| `frontend` | 6 Jest + Testing Library tests and a production build |
+| `docker` | The backend image builds and refuses to start without `JWT_SECRET` |
+
+### Docker
+
+```bash
+printf 'POSTGRES_PASSWORD=%s\nJWT_SECRET=%s\n' \
+  "$(openssl rand -hex 16)" "$(openssl rand -hex 32)" > .env
+
+docker compose up --build
+```
+
+Postgres and the API both publish to `127.0.0.1` only, so neither is reachable
+from your network, and Compose fails fast with a named error if either variable
+is missing.
+
 ## Known limitations
 
 - The trip map is a simulated Delhi to Hyderabad route, not real GPS tracking, and the simulation restarts when the page is reloaded.
 - Companions only get live positions while the traveler has the trip page open; otherwise they see the simulation.
 - Companions are matched by mobile number, so the traveler must enter the number the companion registered with.
 - Rides show as completed 60 minutes after they were shared, even if nobody ended them.
-- JWTs live in `localStorage` and expire after one hour; there is no refresh token or rate limiting on login.
+- JWTs live in `localStorage` and expire after one hour; there is no refresh token. (Login rate limiting now exists — see Hardening.)
 - `npm audit` still reports issues inside `react-scripts` (Create React App) and Sequelize's `uuid` dependency that need breaking upgrades.
+- Rate limit counters live in process memory, so the ceilings are per instance. Scaling past one would need a shared store (Redis).
+- `sequelize.sync()` creates and alters tables on start. Fine for this project; a service holding real data wants migrations so a column rename cannot become a drop-and-recreate.
 
 
 ## Contact

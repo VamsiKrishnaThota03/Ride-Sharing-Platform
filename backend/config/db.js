@@ -5,12 +5,25 @@ const { requireEnv } = require('./env');
 //   1. DATABASE_URL=postgres://user:password@host:port/db
 //   2. DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
 //   3. DB_DIALECT=sqlite (local development only, file in DB_STORAGE)
-// DB_SSL=false turns off SSL for a local PostgreSQL server.
-const useSsl = process.env.DB_SSL !== 'false';
+// TLS, controlled by DB_SSL:
+//   DB_SSL=false / disable  -> no TLS (local or CI PostgreSQL)
+//   DB_SSL=no-verify        -> TLS without certificate verification
+//   unset                   -> TLS with certificate verification
+// Verification used to be off unconditionally (rejectUnauthorized: false),
+// which accepts any certificate and so does not actually authenticate the
+// server. `no-verify` keeps that behaviour available for a provider whose CA
+// is not in Node's bundle, but it now has to be asked for explicitly.
+const sslMode = (process.env.DB_SSL || '').toLowerCase();
+const sslOption = () => {
+  if (sslMode === 'false' || sslMode === 'disable') return {};
+  if (sslMode === 'no-verify') return { ssl: { require: true, rejectUnauthorized: false } };
+  return { ssl: { require: true, rejectUnauthorized: true } };
+};
+
 const postgresOptions = {
   dialect: 'postgres',
   logging: false,
-  dialectOptions: useSsl ? { ssl: { require: true, rejectUnauthorized: false } } : {},
+  dialectOptions: sslOption(),
 };
 
 const createSequelize = () => {

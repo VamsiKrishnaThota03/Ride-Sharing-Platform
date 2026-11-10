@@ -1,0 +1,51 @@
+# Local development stack: PostgreSQL + the API.
+#
+# Both published ports bind to 127.0.0.1, so nothing is reachable from the
+# local network. The API reaches Postgres over the compose network on the `db`
+# hostname; the database publish is only a convenience for psql.
+#
+#   printf 'POSTGRES_PASSWORD=%s\nJWT_SECRET=%s\n' \
+#     "$(openssl rand -hex 16)" "$(openssl rand -hex 32)" > .env
+#   docker compose up --build
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: rideshare
+      POSTGRES_USER: rideshare
+      # No default: compose refuses to start until this is set in .env.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rideshare -d rideshare"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 5001
+      DATABASE_URL: postgres://rideshare:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/rideshare
+      # Local Postgres has no TLS; production leaves this unset so certificates
+      # are verified.
+      DB_SSL: 'false'
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env (openssl rand -hex 32)}
+      CORS_ORIGIN: http://localhost:3000
+    ports:
+      - "127.0.0.1:5001:5001"
+
+volumes:
+  pgdata:
