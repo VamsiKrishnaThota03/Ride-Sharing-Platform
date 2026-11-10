@@ -9,8 +9,8 @@ A full-stack ride-safety sharing app: travelers share their cab details with a c
 ![Sequelize](https://img.shields.io/badge/Sequelize-6.x-52B0E7?logo=sequelize&logoColor=white)
 ![Leaflet](https://img.shields.io/badge/Leaflet-199900?logo=leaflet&logoColor=white)
 
-[![CI](https://github.com/VamsiKrishnaThota03/Ride-Sharing-Platform/actions/workflows/ci.yml/badge.svg)](https://github.com/VamsiKrishnaThota03/Ride-Sharing-Platform/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/VamsiKrishnaThota03/Ride-Sharing-Platform/actions/workflows/codeql.yml/badge.svg)](https://github.com/VamsiKrishnaThota03/Ride-Sharing-Platform/actions/workflows/codeql.yml)
+[![CI](https://github.com/VamsiKrishnaThota03/ride-share-safety/actions/workflows/ci.yml/badge.svg)](https://github.com/VamsiKrishnaThota03/ride-share-safety/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/VamsiKrishnaThota03/ride-share-safety/actions/workflows/codeql.yml/badge.svg)](https://github.com/VamsiKrishnaThota03/ride-share-safety/actions/workflows/codeql.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ## Overview
@@ -19,7 +19,7 @@ This repository is the monorepo version of the project: a Create React App front
 
 | Repository | What it contains |
 |------------|------------------|
-| [Ride-Sharing-Platform](https://github.com/VamsiKrishnaThota03/Ride-Sharing-Platform) | **This repo**: frontend + backend together |
+| [Ride-Sharing-Platform](https://github.com/VamsiKrishnaThota03/ride-share-safety) | **This repo**: frontend + backend together |
 | [ride-sharing-platform-frontend](https://github.com/VamsiKrishnaThota03/ride-sharing-platform-frontend) | Standalone React client ([live demo](https://ride-sharing-platform-frontend.vercel.app)) |
 | [ride-sharing-platform-backend](https://github.com/VamsiKrishnaThota03/ride-sharing-platform-backend) | Standalone Express API |
 
@@ -109,7 +109,7 @@ Ride-Sharing-Platform/
 ### Install
 
 ```bash
-git clone https://github.com/VamsiKrishnaThota03/Ride-Sharing-Platform.git
+git clone https://github.com/VamsiKrishnaThota03/ride-share-safety.git
 cd Ride-Sharing-Platform
 npm install                         # also installs backend/ dependencies
 cp .env.example .env                # frontend settings
